@@ -44,11 +44,11 @@ func New(
 	}
 
 	return &oVirtCredentialMonitor{
-		cli: cli,
+		cli:          cli,
 		secretConfig: secretConfig,
-		callbacks: callbacks,
-		secret: secret,
-		lock: &sync.Mutex{},
-		connection: conn,
+		callbacks:    callbacks,
+		secret:       secret,
+		lock:         &sync.Mutex{},
+		connection:   conn,
 	}, nil
 }

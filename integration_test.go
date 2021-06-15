@@ -10,53 +10,23 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
-	"github.com/ovirt/k8sOVirtCredentialsMonitor"
+	"github.com/oVirt/k8sOVirtCredentialsMonitor"
 )
 
 func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
-	kubeConfig, err := clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to read Kubeconfig file (%w)", err))
-	}
-	kubernetesClient, err := kubernetes.NewForConfig(kubeConfig)
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to create Kubernetes client (%w)", err))
-	}
+	kubeConfig, kubernetesClient := setupKubernetesConnection(t)
 
 	ns := "default"
 
-	createResponse, err := kubernetesClient.CoreV1().Secrets(ns).Create(context.Background(), &corev1.Secret{
-		ObjectMeta: v1.ObjectMeta{
-			GenerateName: "test-",
-			Namespace: ns,
-		},
-
-		Data: map[string][]byte{
-			"ovirt_url": []byte("https://localhost/ovirt-engine/api"),
-			"ovirt_username": []byte("admin@internal"),
-			"ovirt_password": []byte("asdfasdf"),
-			"ovirt_insecure": []byte("true"),
-		},
-		Type: "generic",
-	}, v1.CreateOptions{})
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to create test secret (%w)", err))
-	}
-	defer func() {
-		err := kubernetesClient.CoreV1().Secrets(ns).Delete(
-			context.Background(),
-			createResponse.Name,
-			v1.DeleteOptions{},
-		)
-		if err != nil {
-			t.Fatal(fmt.Errorf("failed to delete test secret %s after test (%w)", createResponse.Name, err))
-		}
-	}()
+	testSecret := createTestSecret(t, kubernetesClient, ns)
+	defer removeTestSecret(t, kubernetesClient, ns, testSecret)
 
 	url := ""
+	expectedURL := "https://example.com/ovirt-engine/api"
 	running := make(chan struct{})
 	updated := make(chan struct{})
 	updateDone := make(chan struct{})
@@ -70,7 +40,7 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 			Config: kubeConfig,
 		},
 		k8sOVirtCredentialsMonitor.OVirtSecretConfig{
-			Name: createResponse.Name,
+			Name:      testSecret.Name,
 			Namespace: ns,
 		},
 		k8sOVirtCredentialsMonitor.Callbacks{
@@ -96,8 +66,8 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	}
 
 	go func() {
-		secret := createResponse
-		secret.Data["ovirt_url"] = []byte("https://example.com/ovirt-engine/api")
+		secret := testSecret
+		secret.Data["ovirt_url"] = []byte(expectedURL)
 		_, updateError = kubernetesClient.CoreV1().Secrets(ns).Update(context.Background(), secret, v1.UpdateOptions{})
 		updateDone <- struct{}{}
 	}()
@@ -108,7 +78,7 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 		t.Fatal(fmt.Errorf("timeout while waiting for updated signal"))
 	}
 
-	if url != "https://example.com/ovirt-engine/api" {
+	if url != expectedURL {
 		t.Fatal(fmt.Errorf("unexpected oVirt engine URL after update: %s", url))
 	}
 
@@ -123,4 +93,50 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	if updateError != nil {
 		t.Fatal(fmt.Errorf("failed to update secret (%w)", updateError))
 	}
+}
+
+func removeTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns string, createResponse *corev1.Secret) {
+	err := kubernetesClient.CoreV1().Secrets(ns).Delete(
+		context.Background(),
+		createResponse.Name,
+		v1.DeleteOptions{},
+	)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to delete test secret %s after test (%w)", createResponse.Name, err))
+	}
+}
+
+func createTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns string) *corev1.Secret {
+	createResponse, err := kubernetesClient.CoreV1().Secrets(ns).Create(
+		context.Background(), &corev1.Secret{
+			ObjectMeta: v1.ObjectMeta{
+				GenerateName: "test-",
+				Namespace:    ns,
+			},
+
+			Data: map[string][]byte{
+				"ovirt_url":      []byte("https://localhost/ovirt-engine/api"),
+				"ovirt_username": []byte("admin@internal"),
+				"ovirt_password": []byte("asdfasdf"),
+				"ovirt_insecure": []byte("true"),
+			},
+			Type: "generic",
+		}, v1.CreateOptions{},
+	)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to create test secret (%w)", err))
+	}
+	return createResponse
+}
+
+func setupKubernetesConnection(t *testing.T) (*rest.Config, *kubernetes.Clientset) {
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to read Kubeconfig file (%w)", err))
+	}
+	kubernetesClient, err := kubernetes.NewForConfig(kubeConfig)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to create Kubernetes client (%w)", err))
+	}
+	return kubeConfig, kubernetesClient
 }

@@ -23,12 +23,12 @@ type OVirtCredentialMonitor interface {
 }
 
 type oVirtCredentialMonitor struct {
-	cli                 *kubernetes.Clientset
-	secretConfig        OVirtSecretConfig
-	callbacks           Callbacks
-	secret              *corev1.Secret
-	lock                *sync.Mutex
-	connection          OVirtConnection
+	cli          *kubernetes.Clientset
+	secretConfig OVirtSecretConfig
+	callbacks    Callbacks
+	secret       *corev1.Secret
+	lock         *sync.Mutex
+	connection   OVirtConnection
 }
 
 func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
@@ -40,8 +40,8 @@ func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
 func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 	w, err := o.cli.CoreV1().Secrets(o.secretConfig.Namespace).Watch(
 		ctx, v1.ListOptions{
-			FieldSelector:        fmt.Sprintf("metadata.name=%s", o.secretConfig.Name),
-			Watch:                true,
+			FieldSelector: fmt.Sprintf("metadata.name=%s", o.secretConfig.Name),
+			Watch:         true,
 		},
 	)
 	if err != nil {

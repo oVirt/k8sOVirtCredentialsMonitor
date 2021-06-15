@@ -6,7 +6,7 @@ type Callbacks struct {
 	// OnMonitorRunning is a callback that is called after the watch is set up for the secret.
 	OnMonitorRunning func()
 	// OnMonitorShuttingDown is a callback that is called before the watch is shut down.
-	OnMonitorShuttingDown func ()
+	OnMonitorShuttingDown func()
 	// OnCredentialChange is called when the oVirt credentials change.
 	OnCredentialChange func(OVirtConnection)
 }

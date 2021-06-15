@@ -9,7 +9,7 @@ It also provides the ability to integrate with the [operator framework](https://
 In order to use this library you will need to add it as a Go dependency:
 
 ```
-go get github.com/janoszen/k8s-ovirt-credential-monitor
+go get github.com/oVirt/k8sOVirtCredentialsMonitor
 ```
 
 Then you can set up the monitor:

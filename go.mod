@@ -1,4 +1,4 @@
-module github.com/ovirt/k8sOVirtCredentialsMonitor
+module github.com/oVirt/k8sOVirtCredentialsMonitor
 
 go 1.14
 
