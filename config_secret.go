@@ -20,3 +20,7 @@ func (o OVirtSecretConfig) Validate() error {
 	}
 	return nil
 }
+
+func (o OVirtSecretConfig) String() string {
+	return fmt.Sprintf("%s/%s", o.Namespace, o.Name)
+}

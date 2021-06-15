@@ -30,6 +30,7 @@ type oVirtCredentialMonitor struct {
 	secret       *corev1.Secret
 	lock         *sync.Mutex
 	connection   OVirtConnection
+	logger       Logger
 }
 
 func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
@@ -39,6 +40,10 @@ func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
 }
 
 func (o *oVirtCredentialMonitor) createWatch(ctx context.Context) (watch.Interface, error) {
+	o.logger.Debugf(
+		"watching secret %s for changes",
+		o.secretConfig.String(),
+	)
 	w, err := o.cli.CoreV1().Secrets(o.secretConfig.Namespace).Watch(
 		ctx, v1.ListOptions{
 			FieldSelector: fmt.Sprintf("metadata.name=%s", o.secretConfig.Name),
@@ -73,20 +78,35 @@ func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 				select {
 				case result, ok := <-w.ResultChan():
 					if !ok {
-						// TODO log error
+						o.logger.Warningf(
+							"watching the %s secret failed (%w)",
+							o.secretConfig.String(),
+							err,
+						)
 						break loop
 					}
+					o.logger.Debugf(
+						"change type %s received",
+						result.Type,
+					)
 					if result.Type == watch.Modified {
 						if secret, ok := result.Object.(*corev1.Secret); ok {
 							o.sendCallback(secret)
 						}
 					}
 				case <-ctx.Done():
+					o.logger.Infof(
+						"shutting down oVirt secret monitoring",
+					)
 					return
 				}
 			}
 		} else {
-			// TODO log error
+			o.logger.Warningf(
+				"creating a watch for the %s secret failed (%w)",
+				o.secretConfig.String(),
+				err,
+			)
 		}
 		select {
 		case <-time.After(time.Minute):
@@ -100,11 +120,18 @@ func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 	o.lock.Lock()
 	defer o.lock.Unlock()
+
 	conn, err := buildConnection(secret)
 	if err != nil {
-		//TODO handle error properly
-		panic(err)
+		o.logger.Errorf(
+			"the %s secret contains an invalid oVirt configuration (%w)",
+			o.secretConfig.String(),
+			err,
+		)
+		return
 	}
+
+	o.logger.Infof("oVirt credentials in secret %s have changed", o.secretConfig.String())
 	o.connection = conn
 	o.callbacks.OnCredentialChange(
 		conn,

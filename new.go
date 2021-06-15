@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -13,6 +14,7 @@ func New(
 	connectionConfig ConnectionConfig,
 	secretConfig OVirtSecretConfig,
 	callbacks Callbacks,
+	logger Logger,
 ) (OVirtCredentialMonitor, error) {
 	if err := secretConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("secret configuration validation failed (%w)", err)
@@ -27,7 +29,9 @@ func New(
 		return nil, fmt.Errorf("failed to create Kubernetes client (%w)", err)
 	}
 
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
 	secret, err := cli.CoreV1().Secrets(secretConfig.Namespace).Get(ctx, secretConfig.Name, v1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -50,5 +54,6 @@ func New(
 		secret:       secret,
 		lock:         &sync.Mutex{},
 		connection:   conn,
+		logger:       logger,
 	}, nil
 }

@@ -43,8 +43,11 @@ monitor, err := k8sOVirtCredentialsMonitor.New(
     secretNamespace string,
     // The secret name must be provided.
     secretName string,
-    // callback will be called when the connection updates.
+    // callbacks will be called when the connection updates.
     callbacks,
+    // logger is an implementation of the k8sOVirtCredentialsMonitor.Logger
+    // interface for pluggable logging.
+    logger,
 )
 if err != nil {
     // Handle error
