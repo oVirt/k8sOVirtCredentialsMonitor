@@ -46,7 +46,7 @@ monitor, err := k8sOVirtCredentialsMonitor.New(
     // callbacks will be called when the connection updates.
     callbacks,
     // logger is an implementation of the k8sOVirtCredentialsMonitor.Logger
-    // interface for pluggable logging.
+    // interface for pluggable logging. This parameter is optional.
     logger,
 )
 if err != nil {
@@ -86,4 +86,23 @@ data:
   ovirt_password: <oVirt password here, base64 encoded>
   ovirt_insecure: <true or false, base64 encoded; optional; not recommended>
   ovirt_ca_bundle: <CA certificate in PEM format, base64-encoded; optional if ovirt_insecure is true>
+```
+
+## Logging
+
+This library supports logging via the following interface:
+
+```go
+type Logger interface {
+	Debugf(format string, args ...interface{})
+	Infof(format string, args ...interface{})
+	Warningf(format string, args ...interface{})
+	Errorf(format string, args ...interface{})
+}
+```
+
+If no logger is provided (`nil`) logging is disabled. You can also create a logger that logs via the Go testing facility:
+
+```go
+logger := k8sOVirtCredentialsMonitor.NewTestLogger(t)
 ```

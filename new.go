@@ -47,6 +47,10 @@ func New(
 		return nil, err
 	}
 
+	if logger == nil {
+		logger = &nopLogger{}
+	}
+
 	return &oVirtCredentialMonitor{
 		cli:          cli,
 		secretConfig: secretConfig,

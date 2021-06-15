@@ -89,32 +89,6 @@ func checkUpdateResults(
 	}
 }
 
-func newTestLogger(t *testing.T) k8sOVirtCredentialsMonitor.Logger {
-	return &testLogger{
-		t: t,
-	}
-}
-
-type testLogger struct {
-	t *testing.T
-}
-
-func (t *testLogger) Debugf(format string, args ...interface{}) {
-	t.t.Logf(format, args...)
-}
-
-func (t *testLogger) Infof(format string, args ...interface{}) {
-	t.t.Logf(format, args...)
-}
-
-func (t *testLogger) Warningf(format string, args ...interface{}) {
-	t.t.Logf(format, args...)
-}
-
-func (t *testLogger) Errorf(format string, args ...interface{}) {
-	t.t.Logf(format, args...)
-}
-
 func setupMonitor(
 	t *testing.T,
 	kubeConfig *rest.Config,
@@ -124,7 +98,7 @@ func setupMonitor(
 	onMonitorRunning func(),
 	ctx context.Context,
 ) {
-	logger := newTestLogger(t)
+	logger := k8sOVirtCredentialsMonitor.NewTestLogger(t)
 
 	monitor, err := k8sOVirtCredentialsMonitor.New(
 		k8sOVirtCredentialsMonitor.ConnectionConfig{
