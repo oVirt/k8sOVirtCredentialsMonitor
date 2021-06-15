@@ -1,4 +1,4 @@
-# K8S oVirt Credential Monitor
+# K8S oVirt Credentials Monitor
 
 [![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ovirt/k8sOVirtCredentialsMonitor/Build?style=for-the-badge)](https://github.com/oVirt/k8sOVirtCredentialsMonitor/actions)
 
