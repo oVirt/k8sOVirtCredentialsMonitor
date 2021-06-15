@@ -70,14 +70,13 @@ func checkUpdateResults(
 	updateDone chan struct{},
 ) {
 	select {
-	case foundURL := <- url:
+	case foundURL := <-url:
 		if foundURL != expectedURL {
 			t.Fatal(fmt.Errorf("unexpected oVirt engine URL after update: %s", foundURL))
 		}
 	case <-time.After(time.Minute):
 		t.Fatal(fmt.Errorf("timeout while waiting for updated signal"))
 	}
-
 
 	if err, ok := <-updateError; ok {
 		t.Fatal(fmt.Errorf("failed to update secret (%w)", err))
