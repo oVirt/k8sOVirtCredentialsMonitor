@@ -25,39 +25,22 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	testSecret := createTestSecret(t, kubernetesClient, ns)
 	defer removeTestSecret(t, kubernetesClient, ns, testSecret)
 
-	url := ""
+	url := make(chan string)
 	expectedURL := "https://example.com/ovirt-engine/api"
 	running := make(chan struct{})
-	updated := make(chan struct{})
 	updateDone := make(chan struct{})
-	var updateError error
+	updateError := make(chan error, 1)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	monitor, err := k8sOVirtCredentialsMonitor.New(
-		k8sOVirtCredentialsMonitor.ConnectionConfig{
-			Config: kubeConfig,
-		},
-		k8sOVirtCredentialsMonitor.OVirtSecretConfig{
-			Name:      testSecret.Name,
-			Namespace: ns,
-		},
-		k8sOVirtCredentialsMonitor.Callbacks{
-			OnCredentialChange: func(connection k8sOVirtCredentialsMonitor.OVirtConnection) {
-				url = connection.GetSDK().URL()
-				updated <- struct{}{}
-			},
-			OnMonitorRunning: func() {
-				running <- struct{}{}
-			},
-		},
-	)
-	if err != nil {
-		t.Fatal(fmt.Errorf("failed to instantiate monitor (%w)", err))
+	onCredentialsChange := func(connection k8sOVirtCredentialsMonitor.OVirtConnection) {
+		url <- connection.GetSDK().URL()
 	}
-
-	go monitor.Run(ctx)
+	onMonitorRunning := func() {
+		running <- struct{}{}
+	}
+	setupMonitor(t, kubeConfig, testSecret, ns, onCredentialsChange, onMonitorRunning, ctx)
 
 	select {
 	case <-running:
@@ -68,31 +51,71 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	go func() {
 		secret := testSecret
 		secret.Data["ovirt_url"] = []byte(expectedURL)
-		_, updateError = kubernetesClient.CoreV1().Secrets(ns).Update(context.Background(), secret, v1.UpdateOptions{})
+		_, err := kubernetesClient.CoreV1().Secrets(ns).Update(context.Background(), secret, v1.UpdateOptions{})
+		if err != nil {
+			updateError <- err
+		}
+		close(updateError)
 		updateDone <- struct{}{}
 	}()
 
+	checkUpdateResults(t, url, expectedURL, updateError, updateDone)
+}
+
+func checkUpdateResults(
+	t *testing.T,
+	url chan string,
+	expectedURL string,
+	updateError chan error,
+	updateDone chan struct{},
+) {
 	select {
-	case <-updated:
+	case foundURL := <- url:
+		if foundURL != expectedURL {
+			t.Fatal(fmt.Errorf("unexpected oVirt engine URL after update: %s", foundURL))
+		}
 	case <-time.After(time.Minute):
 		t.Fatal(fmt.Errorf("timeout while waiting for updated signal"))
 	}
 
-	if url != expectedURL {
-		t.Fatal(fmt.Errorf("unexpected oVirt engine URL after update: %s", url))
-	}
 
-	cancel()
+	if err, ok := <-updateError; ok {
+		t.Fatal(fmt.Errorf("failed to update secret (%w)", err))
+	}
 
 	select {
 	case <-updateDone:
 	case <-time.After(time.Minute):
 		t.Fatal(fmt.Errorf("timeout while waiting for updateDone signal"))
 	}
+}
 
-	if updateError != nil {
-		t.Fatal(fmt.Errorf("failed to update secret (%w)", updateError))
+func setupMonitor(
+	t *testing.T,
+	kubeConfig *rest.Config,
+	testSecret *corev1.Secret,
+	ns string,
+	onCredentialsChange func(connection k8sOVirtCredentialsMonitor.OVirtConnection),
+	onMonitorRunning func(),
+	ctx context.Context,
+) {
+	monitor, err := k8sOVirtCredentialsMonitor.New(
+		k8sOVirtCredentialsMonitor.ConnectionConfig{
+			Config: kubeConfig,
+		},
+		k8sOVirtCredentialsMonitor.OVirtSecretConfig{
+			Name:      testSecret.Name,
+			Namespace: ns,
+		},
+		k8sOVirtCredentialsMonitor.Callbacks{
+			OnCredentialChange: onCredentialsChange,
+			OnMonitorRunning:   onMonitorRunning,
+		},
+	)
+	if err != nil {
+		t.Fatal(fmt.Errorf("failed to instantiate monitor (%w)", err))
 	}
+	go monitor.Run(ctx)
 }
 
 func removeTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns string, createResponse *corev1.Secret) {

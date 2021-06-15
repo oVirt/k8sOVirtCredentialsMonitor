@@ -54,7 +54,6 @@ if err != nil {
 // Set up the context for stopping the monitor.
 ctx, cancel := context.WithCancel(context.Background())
 defer cancel()
-}
 
 // Run the monitor in the background. This goroutine runs until the context
 // is canceled.
