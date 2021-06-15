@@ -1,8 +1,8 @@
 # K8S oVirt Credential Monitor
 
-This library provides the ability to monitor a secret in Kubernetes and provide an updated oVirt SDK client to a hook function.
+[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ovirt/k8sOVirtCredentialsMonitor/Build?style=for-the-badge)](https://github.com/oVirt/k8sOVirtCredentialsMonitor/actions)
 
-It also provides the ability to integrate with the [operator framework](https://sdk.operatorframework.io/).
+This library provides the ability to monitor a secret in Kubernetes and provide an updated oVirt SDK client to a hook function.
 
 ## Basic usage
 
