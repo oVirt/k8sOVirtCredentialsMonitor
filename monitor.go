@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	ovirtsdk "github.com/ovirt/go-ovirt"
 	corev1 "k8s.io/api/core/v1"
@@ -37,7 +38,7 @@ func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
 	return o.connection
 }
 
-func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
+func (o *oVirtCredentialMonitor) createWatch(ctx context.Context) (watch.Interface, error) {
 	w, err := o.cli.CoreV1().Secrets(o.secretConfig.Namespace).Watch(
 		ctx, v1.ListOptions{
 			FieldSelector: fmt.Sprintf("metadata.name=%s", o.secretConfig.Name),
@@ -45,25 +46,51 @@ func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 		},
 	)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create watch (%w)", err)
 	}
+	return w, nil
+}
+
+func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
+	var w watch.Interface
+	var err error
 	defer func() {
 		if o.callbacks.OnMonitorShuttingDown != nil {
 			o.callbacks.OnMonitorShuttingDown()
 		}
-		w.Stop()
+		if w != nil {
+			w.Stop()
+		}
 	}()
 	if o.callbacks.OnMonitorRunning != nil {
 		o.callbacks.OnMonitorRunning()
 	}
 	for {
-		select {
-		case result := <-w.ResultChan():
-			if result.Type == watch.Modified {
-				if secret, ok := result.Object.(*corev1.Secret); ok {
-					o.sendCallback(secret)
+		w, err = o.createWatch(ctx)
+		if err == nil {
+		loop:
+			for {
+				select {
+				case result, ok := <-w.ResultChan():
+					if !ok {
+						// TODO log error
+						break loop
+					}
+					if result.Type == watch.Modified {
+						if secret, ok := result.Object.(*corev1.Secret); ok {
+							o.sendCallback(secret)
+						}
+					}
+				case <-ctx.Done():
+					return
 				}
 			}
+		} else {
+			// TODO log error
+		}
+		select {
+		case <-time.After(time.Minute):
+			continue
 		case <-ctx.Done():
 			return
 		}
