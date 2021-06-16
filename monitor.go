@@ -18,7 +18,8 @@ import (
 type OVirtCredentialMonitor interface {
 	// GetConnection returns the client from the latest credential update. It is recommended that this function should
 	// only be called under a lock shared with the callback to avoid race conditions.
-	GetConnection() OVirtConnection
+	// This function may return an error if the stored credentials are not valid.
+	GetConnection() (OVirtConnection, error)
 	// Run runs in foreground until the context expires.
 	Run(ctx context.Context)
 }
@@ -33,10 +34,18 @@ type oVirtCredentialMonitor struct {
 	logger       Logger
 }
 
-func (o *oVirtCredentialMonitor) GetConnection() OVirtConnection {
+func (o *oVirtCredentialMonitor) GetConnection() (OVirtConnection, error) {
 	o.lock.Lock()
 	defer o.lock.Unlock()
-	return o.connection
+
+	if o.callbacks.OnValidateCredentials != nil {
+		if err := o.callbacks.OnValidateCredentials(o.connection); err != nil {
+			o.logger.Errorf("stored oVirt credentials are invalid (%v)", err)
+			return nil, fmt.Errorf("stored oVirt credentials are invalid (%w)", err)
+		}
+	}
+
+	return o.connection, nil
 }
 
 func (o *oVirtCredentialMonitor) createWatch(ctx context.Context) (watch.Interface, error) {
@@ -149,11 +158,21 @@ func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 	}
 
 	o.logger.Infof("oVirt credentials in secret %s have changed", o.secretConfig.String())
+
+	if o.callbacks.OnValidateCredentials != nil {
+		if err := o.callbacks.OnValidateCredentials(conn); err != nil {
+			o.logger.Errorf("oVirt credentials are invalid (%v)", err)
+		}
+	}
+
 	o.secret = secret
 	o.connection = conn
-	o.callbacks.OnCredentialChange(
-		conn,
-	)
+
+	if o.callbacks.OnCredentialsChange != nil {
+		o.callbacks.OnCredentialsChange(
+			conn,
+		)
+	}
 }
 
 func buildConnection(secret *corev1.Secret) (OVirtConnection, error) {

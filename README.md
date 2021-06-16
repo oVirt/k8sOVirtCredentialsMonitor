@@ -22,7 +22,7 @@ var connLock := &sync.Mutex{}
 
 // This callback will be called when the credentials change.
 callback := k8sOVirtCredentialsMonitor.Callbacks{
-    OnCredentialChange: func (connection ovirt_credential_monitor.OVirtConnection) {
+    OnCredentialsChange: func (connection k8sOVirtCredentialsMonitor.OVirtConnection) {
         connLock.Lock()
         defer connLock.Unlock()
 
@@ -32,6 +32,10 @@ callback := k8sOVirtCredentialsMonitor.Callbacks{
     // Optional callbacks without extra parameters
     // - OnMonitorRunning - when the monitor has started
     // - OnMonitorShuttingDown - before the monitor is shutting down
+    // - OnCredentialsValidate - allows you to validate credentials before use.
+    //                           You can pass the
+    //                           k8sOVirtCredentialsMonitor.ValidateCredentials
+    //                           function here.
 }
 
 // Set up the credential monitor.

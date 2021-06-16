@@ -108,8 +108,8 @@ func setupMonitor(
 			Namespace: ns,
 		},
 		k8sOVirtCredentialsMonitor.Callbacks{
-			OnCredentialChange: onCredentialsChange,
-			OnMonitorRunning:   onMonitorRunning,
+			OnCredentialsChange: onCredentialsChange,
+			OnMonitorRunning:    onMonitorRunning,
 		},
 		logger,
 	)

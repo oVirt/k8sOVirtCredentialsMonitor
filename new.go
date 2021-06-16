@@ -20,8 +20,8 @@ func New(
 		return nil, fmt.Errorf("secret configuration validation failed (%w)", err)
 	}
 
-	if callbacks.OnCredentialChange == nil {
-		return nil, fmt.Errorf("the OnCredentialChange option is required for the callbacks")
+	if callbacks.OnCredentialsChange == nil {
+		return nil, fmt.Errorf("the OnCredentialsChange option is required for the callbacks")
 	}
 
 	cli, err := kubernetes.NewForConfig(connectionConfig.Config)
