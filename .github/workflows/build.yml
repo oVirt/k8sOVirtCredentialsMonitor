@@ -1,6 +1,10 @@
 name: Build
 on:
   push:
+    paths-ignore:
+      - '**/*.md'
+      - '**/LICENSE'
+      - '**/.gitignore'
   pull_request:
   schedule:
     - cron: '0 17 * * 2'

@@ -22,7 +22,9 @@ var connLock := &sync.Mutex{}
 
 // This callback will be called when the credentials change.
 callback := k8sOVirtCredentialsMonitor.Callbacks{
-    OnCredentialsChange: func (connection k8sOVirtCredentialsMonitor.OVirtConnection) {
+    OnCredentialsChange: func (
+        connection k8sOVirtCredentialsMonitor.OVirtConnection
+    ) {
         connLock.Lock()
         defer connLock.Unlock()
 
