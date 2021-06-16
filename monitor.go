@@ -53,6 +53,19 @@ func (o *oVirtCredentialMonitor) createWatch(ctx context.Context) (watch.Interfa
 	if err != nil {
 		return nil, fmt.Errorf("failed to create watch (%w)", err)
 	}
+
+	secret, err := o.cli.CoreV1().Secrets(o.secretConfig.Namespace).Get(ctx, o.secretConfig.Name, v1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to fetch secret with the name %s in namespaces %s (%w)",
+			o.secretConfig.Name,
+			o.secretConfig.Namespace,
+			err,
+		)
+	}
+
+	o.sendCallback(secret)
+
 	return w, nil
 }
 
@@ -121,6 +134,10 @@ func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 	o.lock.Lock()
 	defer o.lock.Unlock()
 
+	if secret.ResourceVersion == o.secret.ResourceVersion {
+		return
+	}
+
 	conn, err := buildConnection(secret)
 	if err != nil {
 		o.logger.Errorf(
@@ -132,6 +149,7 @@ func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 	}
 
 	o.logger.Infof("oVirt credentials in secret %s have changed", o.secretConfig.String())
+	o.secret = secret
 	o.connection = conn
 	o.callbacks.OnCredentialChange(
 		conn,

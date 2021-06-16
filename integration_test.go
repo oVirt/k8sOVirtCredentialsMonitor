@@ -2,7 +2,6 @@ package k8sOVirtCredentialsMonitor_test
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -45,7 +44,7 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	select {
 	case <-running:
 	case <-time.After(time.Minute):
-		t.Fatal(fmt.Errorf("timeout while waiting for running signal"))
+		t.Fatalf("timeout while waiting for running signal")
 	}
 
 	go func() {
@@ -72,20 +71,20 @@ func checkUpdateResults(
 	select {
 	case foundURL := <-url:
 		if foundURL != expectedURL {
-			t.Fatal(fmt.Errorf("unexpected oVirt engine URL after update: %s", foundURL))
+			t.Fatalf("unexpected oVirt engine URL after update: %s", foundURL)
 		}
 	case <-time.After(time.Minute):
-		t.Fatal(fmt.Errorf("timeout while waiting for updated signal"))
+		t.Fatalf("timeout while waiting for updated signal")
 	}
 
 	if err, ok := <-updateError; ok {
-		t.Fatal(fmt.Errorf("failed to update secret (%w)", err))
+		t.Fatalf("failed to update secret (%v)", err)
 	}
 
 	select {
 	case <-updateDone:
 	case <-time.After(time.Minute):
-		t.Fatal(fmt.Errorf("timeout while waiting for updateDone signal"))
+		t.Fatalf("timeout while waiting for updateDone signal")
 	}
 }
 
@@ -115,7 +114,7 @@ func setupMonitor(
 		logger,
 	)
 	if err != nil {
-		t.Fatal(fmt.Errorf("failed to instantiate monitor (%w)", err))
+		t.Fatalf("failed to instantiate monitor (%v)", err)
 	}
 	go monitor.Run(ctx)
 }
@@ -127,7 +126,7 @@ func removeTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns s
 		v1.DeleteOptions{},
 	)
 	if err != nil {
-		t.Fatal(fmt.Errorf("failed to delete test secret %s after test (%w)", createResponse.Name, err))
+		t.Fatalf("failed to delete test secret %s after test (%v)", createResponse.Name, err)
 	}
 }
 
@@ -149,7 +148,7 @@ func createTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns s
 		}, v1.CreateOptions{},
 	)
 	if err != nil {
-		t.Fatal(fmt.Errorf("failed to create test secret (%w)", err))
+		t.Fatalf("failed to create test secret (%v)", err)
 	}
 	return createResponse
 }
@@ -157,11 +156,11 @@ func createTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns s
 func setupKubernetesConnection(t *testing.T) (*rest.Config, *kubernetes.Clientset) {
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", filepath.Join(homedir.HomeDir(), ".kube", "config"))
 	if err != nil {
-		t.Fatal(fmt.Errorf("failed to read Kubeconfig file (%w)", err))
+		t.Fatalf("failed to read Kubeconfig file (%v)", err)
 	}
 	kubernetesClient, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
-		t.Fatal(fmt.Errorf("failed to create Kubernetes client (%w)", err))
+		t.Fatalf("failed to create Kubernetes client (%v)", err)
 	}
 	return kubeConfig, kubernetesClient
 }
