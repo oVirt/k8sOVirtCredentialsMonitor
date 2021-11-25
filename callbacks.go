@@ -1,4 +1,8 @@
-package k8sOVirtCredentialsMonitor
+package k8sovirtcredentialsmonitor
+
+import (
+	ovirtclient "github.com/ovirt/go-ovirt-client"
+)
 
 // Callbacks is a configuration structure that holds the possible callbacks for the monitor.
 type Callbacks struct {
@@ -9,10 +13,10 @@ type Callbacks struct {
 	OnMonitorShuttingDown func()
 
 	// OnCredentialsChange is called when the oVirt credentials change.
-	OnCredentialsChange func(OVirtConnection)
+	OnCredentialsChange func(ovirtclient.ClientWithLegacySupport)
 
-	// OnValidateCredentials is called before the credentials are passed/returned. This
-	// can be used to validate the credentials, e.g. by calling connection.GetSDK().Test()
-	// You can pass the k8sOVirtCredentialsMonitor.ValidateCredentials function here.
-	OnValidateCredentials func(OVirtConnection) error
+	// OnCredentialsValidate is called before the credentials are passed/returned. This
+	// can be used to validate the credentials, e.g. by calling connection.Test()
+	// If not configured, k8sovirtcredentialsmonitor.ValidateCredentials will be used here.
+	OnCredentialsValidate func(ovirtclient.ClientWithLegacySupport) error
 }

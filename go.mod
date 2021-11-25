@@ -1,9 +1,10 @@
-module github.com/oVirt/k8sOVirtCredentialsMonitor
+module github.com/ovirt/k8sovirtcredentialsmonitor
 
-go 1.14
+go 1.16
 
 require (
-	github.com/ovirt/go-ovirt v0.0.0-20201023070830-77e357c438d5
+	github.com/ovirt/go-ovirt-client v0.7.2-0.20211125105627-fccb94e139ab
+	github.com/ovirt/go-ovirt-client-log/v2 v2.2.0
 	k8s.io/api v0.21.1
 	k8s.io/apimachinery v0.21.1
 	k8s.io/client-go v0.21.1

@@ -1,4 +1,4 @@
-package k8sOVirtCredentialsMonitor
+package k8sovirtcredentialsmonitor
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/ovirt/go-ovirt-client-log/v2"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -14,7 +15,7 @@ func New(
 	connectionConfig ConnectionConfig,
 	secretConfig OVirtSecretConfig,
 	callbacks Callbacks,
-	logger Logger,
+	logger log.Logger,
 ) (OVirtCredentialMonitor, error) {
 	if err := secretConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("secret configuration validation failed (%w)", err)
@@ -22,6 +23,9 @@ func New(
 
 	if callbacks.OnCredentialsChange == nil {
 		return nil, fmt.Errorf("the OnCredentialsChange option is required for the callbacks")
+	}
+	if callbacks.OnCredentialsValidate == nil {
+		callbacks.OnCredentialsValidate = ValidateCredentials
 	}
 
 	cli, err := kubernetes.NewForConfig(connectionConfig.Config)
@@ -42,13 +46,13 @@ func New(
 		)
 	}
 
-	conn, err := buildConnection(secret)
-	if err != nil {
-		return nil, err
+	if logger == nil {
+		logger = log.NewNOOPLogger()
 	}
 
-	if logger == nil {
-		logger = &nopLogger{}
+	conn, err := buildConnection(secret, logger)
+	if err != nil {
+		return nil, err
 	}
 
 	return &oVirtCredentialMonitor{
