@@ -1,4 +1,4 @@
-package k8sOVirtCredentialsMonitor_test
+package k8sovirtcredentialsmonitor_test
 
 import (
 	"context"
@@ -6,23 +6,35 @@ import (
 	"testing"
 	"time"
 
+	ovirtclient "github.com/ovirt/go-ovirt-client"
+	log "github.com/ovirt/go-ovirt-client-log/v2"
+	"github.com/ovirt/k8sovirtcredentialsmonitor"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
-
-	"github.com/oVirt/k8sOVirtCredentialsMonitor"
 )
 
 func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
+	t.Logf("Attempting to obtain Kubernetes credentials from ~/.kube/config ...")
 	kubeConfig, kubernetesClient := setupKubernetesConnection(t)
+
+	serverVersion, err := kubernetesClient.ServerVersion()
+	if err != nil {
+		t.Skipf("cannot run test, the Kubernetes service from the config file in ~/.kube/config")
+	}
+	t.Logf("Kubernetes server version is %s.", serverVersion.String())
 
 	ns := "default"
 
 	testSecret := createTestSecret(t, kubernetesClient, ns)
-	defer removeTestSecret(t, kubernetesClient, ns, testSecret)
+	t.Cleanup(
+		func() {
+			removeTestSecret(t, kubernetesClient, ns, testSecret)
+		},
+	)
 
 	url := make(chan string)
 	expectedURL := "https://example.com/ovirt-engine/api"
@@ -33,21 +45,26 @@ func TestUpdatingSecretShouldTriggerConnectionUpdate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	onCredentialsChange := func(connection k8sOVirtCredentialsMonitor.OVirtConnection) {
-		url <- connection.GetSDK().URL()
+	onCredentialsChange := func(connection ovirtclient.ClientWithLegacySupport) {
+		t.Logf("Credentials change hook called.")
+		url <- connection.GetURL()
 	}
 	onMonitorRunning := func() {
+		t.Logf("Monitor running hook called.")
 		running <- struct{}{}
 	}
 	setupMonitor(t, kubeConfig, testSecret, ns, onCredentialsChange, onMonitorRunning, ctx)
 
+	t.Logf("Waiting for monitor to enter running state...")
 	select {
 	case <-running:
+		t.Logf("Monitor is now running.")
 	case <-time.After(time.Minute):
 		t.Fatalf("timeout while waiting for running signal")
 	}
 
 	go func() {
+		t.Logf("Changing test secret to URL %s...", expectedURL)
 		secret := testSecret
 		secret.Data["ovirt_url"] = []byte(expectedURL)
 		_, err := kubernetesClient.CoreV1().Secrets(ns).Update(context.Background(), secret, v1.UpdateOptions{})
@@ -68,8 +85,10 @@ func checkUpdateResults(
 	updateError chan error,
 	updateDone chan struct{},
 ) {
+	t.Logf("Waiting for credentials change...")
 	select {
 	case foundURL := <-url:
+		t.Logf("Received changed URL %s.", foundURL)
 		if foundURL != expectedURL {
 			t.Fatalf("unexpected oVirt engine URL after update: %s", foundURL)
 		}
@@ -78,13 +97,15 @@ func checkUpdateResults(
 	}
 
 	if err, ok := <-updateError; ok {
-		t.Fatalf("failed to update secret (%v)", err)
+		t.Fatalf("Failed to update secret (%v).", err)
 	}
 
+	t.Logf("Waiting for update done signal...")
 	select {
 	case <-updateDone:
+		t.Logf("Update is complete.")
 	case <-time.After(time.Minute):
-		t.Fatalf("timeout while waiting for updateDone signal")
+		t.Fatalf("Timeout while waiting for update done signal.")
 	}
 }
 
@@ -93,23 +114,28 @@ func setupMonitor(
 	kubeConfig *rest.Config,
 	testSecret *corev1.Secret,
 	ns string,
-	onCredentialsChange func(connection k8sOVirtCredentialsMonitor.OVirtConnection),
+	onCredentialsChange func(connection ovirtclient.ClientWithLegacySupport),
 	onMonitorRunning func(),
 	ctx context.Context,
 ) {
-	logger := k8sOVirtCredentialsMonitor.NewTestLogger(t)
+	t.Logf("Setting up credentials monitor...")
+	logger := log.NewTestLogger(t)
 
-	monitor, err := k8sOVirtCredentialsMonitor.New(
-		k8sOVirtCredentialsMonitor.ConnectionConfig{
+	monitor, err := k8sovirtcredentialsmonitor.New(
+		k8sovirtcredentialsmonitor.ConnectionConfig{
 			Config: kubeConfig,
 		},
-		k8sOVirtCredentialsMonitor.OVirtSecretConfig{
+		k8sovirtcredentialsmonitor.OVirtSecretConfig{
 			Name:      testSecret.Name,
 			Namespace: ns,
 		},
-		k8sOVirtCredentialsMonitor.Callbacks{
+		k8sovirtcredentialsmonitor.Callbacks{
 			OnCredentialsChange: onCredentialsChange,
 			OnMonitorRunning:    onMonitorRunning,
+			OnCredentialsValidate: func(support ovirtclient.ClientWithLegacySupport) error {
+				// Don't verify credentials because we don't have a working engine.
+				return nil
+			},
 		},
 		logger,
 	)
@@ -131,6 +157,8 @@ func removeTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns s
 }
 
 func createTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns string) *corev1.Secret {
+	url := "https://localhost/ovirt-engine/api"
+	t.Logf("Creating test secret with URL %s...", url)
 	createResponse, err := kubernetesClient.CoreV1().Secrets(ns).Create(
 		context.Background(), &corev1.Secret{
 			ObjectMeta: v1.ObjectMeta{
@@ -139,7 +167,7 @@ func createTestSecret(t *testing.T, kubernetesClient *kubernetes.Clientset, ns s
 			},
 
 			Data: map[string][]byte{
-				"ovirt_url":      []byte("https://localhost/ovirt-engine/api"),
+				"ovirt_url":      []byte(url),
 				"ovirt_username": []byte("admin@internal"),
 				"ovirt_password": []byte("asdfasdf"),
 				"ovirt_insecure": []byte("true"),

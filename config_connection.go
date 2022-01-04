@@ -1,4 +1,4 @@
-package k8sOVirtCredentialsMonitor
+package k8sovirtcredentialsmonitor
 
 import (
 	"k8s.io/client-go/rest"

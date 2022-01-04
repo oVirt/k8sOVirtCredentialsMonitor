@@ -1,4 +1,4 @@
-package k8sOVirtCredentialsMonitor
+package k8sovirtcredentialsmonitor
 
 import (
 	"context"
@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	ovirtsdk "github.com/ovirt/go-ovirt"
+	ovirtclient "github.com/ovirt/go-ovirt-client"
+	log "github.com/ovirt/go-ovirt-client-log/v2"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
@@ -19,7 +20,7 @@ type OVirtCredentialMonitor interface {
 	// GetConnection returns the client from the latest credential update. It is recommended that this function should
 	// only be called under a lock shared with the callback to avoid race conditions.
 	// This function may return an error if the stored credentials are not valid.
-	GetConnection() (OVirtConnection, error)
+	GetConnection() (ovirtclient.ClientWithLegacySupport, error)
 	// Run runs in foreground until the context expires.
 	Run(ctx context.Context)
 }
@@ -30,16 +31,16 @@ type oVirtCredentialMonitor struct {
 	callbacks    Callbacks
 	secret       *corev1.Secret
 	lock         *sync.Mutex
-	connection   OVirtConnection
-	logger       Logger
+	connection   ovirtclient.ClientWithLegacySupport
+	logger       log.Logger
 }
 
-func (o *oVirtCredentialMonitor) GetConnection() (OVirtConnection, error) {
+func (o *oVirtCredentialMonitor) GetConnection() (ovirtclient.ClientWithLegacySupport, error) {
 	o.lock.Lock()
 	defer o.lock.Unlock()
 
-	if o.callbacks.OnValidateCredentials != nil {
-		if err := o.callbacks.OnValidateCredentials(o.connection); err != nil {
+	if o.callbacks.OnCredentialsValidate != nil {
+		if err := o.callbacks.OnCredentialsValidate(o.connection); err != nil {
 			o.logger.Errorf("stored oVirt credentials are invalid (%v)", err)
 			return nil, fmt.Errorf("stored oVirt credentials are invalid (%w)", err)
 		}
@@ -50,7 +51,7 @@ func (o *oVirtCredentialMonitor) GetConnection() (OVirtConnection, error) {
 
 func (o *oVirtCredentialMonitor) createWatch(ctx context.Context) (watch.Interface, error) {
 	o.logger.Debugf(
-		"watching secret %s for changes",
+		"Watching secret %s for changes...",
 		o.secretConfig.String(),
 	)
 	w, err := o.cli.CoreV1().Secrets(o.secretConfig.Namespace).Watch(
@@ -101,14 +102,14 @@ func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 				case result, ok := <-w.ResultChan():
 					if !ok {
 						o.logger.Warningf(
-							"watching the %s secret failed (%w)",
+							"Watching the %s secret failed (%w).",
 							o.secretConfig.String(),
 							err,
 						)
 						break loop
 					}
 					o.logger.Debugf(
-						"change type %s received",
+						"Change type %s received.",
 						result.Type,
 					)
 					if result.Type == watch.Modified {
@@ -118,14 +119,14 @@ func (o *oVirtCredentialMonitor) Run(ctx context.Context) {
 					}
 				case <-ctx.Done():
 					o.logger.Infof(
-						"shutting down oVirt secret monitoring",
+						"Shutting down oVirt secret monitoring...",
 					)
 					return
 				}
 			}
 		} else {
 			o.logger.Warningf(
-				"creating a watch for the %s secret failed (%w)",
+				"Creating a watch for the %s secret failed (%w).",
 				o.secretConfig.String(),
 				err,
 			)
@@ -147,22 +148,21 @@ func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 		return
 	}
 
-	conn, err := buildConnection(secret)
+	conn, err := buildConnection(secret, o.logger)
 	if err != nil {
 		o.logger.Errorf(
-			"the %s secret contains an invalid oVirt configuration (%w)",
+			"The %s secret contains an invalid oVirt configuration (%w).",
 			o.secretConfig.String(),
 			err,
 		)
 		return
 	}
 
-	o.logger.Infof("oVirt credentials in secret %s have changed", o.secretConfig.String())
+	o.logger.Infof("oVirt credentials in secret %s have changed.", o.secretConfig.String())
 
-	if o.callbacks.OnValidateCredentials != nil {
-		if err := o.callbacks.OnValidateCredentials(conn); err != nil {
-			o.logger.Errorf("oVirt credentials are invalid (%v)", err)
-		}
+	if err := o.callbacks.OnCredentialsValidate(conn); err != nil {
+		o.logger.Errorf("oVirt credentials are invalid, retaining old credentials (%v).", err)
+		return
 	}
 
 	o.secret = secret
@@ -175,33 +175,44 @@ func (o *oVirtCredentialMonitor) sendCallback(secret *corev1.Secret) {
 	}
 }
 
-func buildConnection(secret *corev1.Secret) (OVirtConnection, error) {
+func buildConnection(secret *corev1.Secret, logger log.Logger) (ovirtclient.ClientWithLegacySupport, error) {
 	data := secret.Data
-	connectionBuilder := ovirtsdk.NewConnectionBuilder()
-	if url, ok := data["ovirt_url"]; ok {
-		connectionBuilder = connectionBuilder.URL(string(url))
+	url, ok := data["ovirt_url"]
+	if !ok {
+		return nil, fmt.Errorf("missing ovirt_url in secret")
 	}
-	if username, ok := data["ovirt_username"]; ok {
-		connectionBuilder = connectionBuilder.Username(string(username))
+	username, ok := data["ovirt_username"]
+	if !ok {
+		return nil, fmt.Errorf("missing ovirt_username in secret")
 	}
-	if password, ok := data["ovirt_password"]; ok {
-		connectionBuilder = connectionBuilder.Password(string(password))
+	password, ok := data["ovirt_password"]
+	if !ok {
+		return nil, fmt.Errorf("missing ovirt_password in secret")
 	}
+	tls := ovirtclient.TLS()
 	if insecure, ok := data["ovirt_insecure"]; ok {
 		if string(insecure) == "true" {
-			connectionBuilder = connectionBuilder.Insecure(true)
-		} else {
-			connectionBuilder = connectionBuilder.Insecure(false)
+			tls.Insecure()
 		}
+	} else if bundle, ok := data["ovirt_ca_bundle"]; ok {
+		tls.CACertsFromMemory(bundle)
+	} else {
+		return nil, fmt.Errorf("neither ovirt_insecure nor ovirt_ca_bundle is specified, please specify a certificate verification method")
 	}
-	if bundle, ok := data["ovirt_ca_bundle"]; ok {
-		connectionBuilder = connectionBuilder.CACert(bundle)
-	}
-	conn, err := connectionBuilder.Build()
+
+	connection, err := ovirtclient.NewWithVerify(
+		string(url),
+		string(username),
+		string(password),
+		tls,
+		logger,
+		nil,
+		// Disable verification as we'll do that.
+		nil,
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build oVirt connection object (%w)", err)
+		return nil, fmt.Errorf("failed to create oVirt connection (%w)", err)
 	}
-	return &oVirtConnection{
-		conn: conn,
-	}, nil
+
+	return connection, nil
 }

@@ -1,5 +1,10 @@
-package k8sOVirtCredentialsMonitor
+package k8sovirtcredentialsmonitor
 
-func ValidateCredentials(connection OVirtConnection) error {
-	return connection.GetSDK().Test()
+import (
+	ovirtclient "github.com/ovirt/go-ovirt-client"
+)
+
+// ValidateCredentials provides default validation of an oVirt Connection.
+func ValidateCredentials(connection ovirtclient.ClientWithLegacySupport) error {
+	return connection.Test()
 }
