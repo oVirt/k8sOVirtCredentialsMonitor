@@ -1,6 +1,6 @@
-# K8S oVirt Credentials Monitor
+# K8S oVirt Credentials Monitor [DEPRECATED]
 
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/ovirt/k8sOVirtCredentialsMonitor/Build?style=for-the-badge)](https://github.com/oVirt/k8sOVirtCredentialsMonitor/actions)
+**Deprecated:** This library is no longer being developed or used.
 
 This library provides the ability to monitor a secret in Kubernetes and provide an updated oVirt SDK client to a hook function.
 
